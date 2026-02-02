@@ -1,0 +1,129 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fund-estimate
+
+---
+# ConfigMap - 应用配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fund-estimate-config
+  namespace: fund-estimate
+data:
+  application.properties: |
+    server.port=8080
+    spring.application.name=fund-estimate
+    # MySQL 数据库配置 - 修改为你的腾讯云 MySQL 地址
+    spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+    spring.datasource.url=jdbc:mysql://YOUR_MYSQL_HOST:YOUR_MYSQL_PORT/fund_estimate?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    spring.datasource.username=YOUR_MYSQL_USER
+    spring.datasource.password=YOUR_MYSQL_PASSWORD
+    mybatis-plus.mapper-locations=classpath:mapper/*.xml
+    mybatis-plus.type-aliases-package=com.example.fundestimate.entity
+    mybatis-plus.configuration.map-underscore-to-camel-case=true
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fund-estimate
+  namespace: fund-estimate
+  labels:
+    app: fund-estimate
+spec:
+  replicas: 2  # 副本数
+  selector:
+    matchLabels:
+      app: fund-estimate
+  template:
+    metadata:
+      labels:
+        app: fund-estimate
+    spec:
+      containers:
+      - name: fund-estimate
+        image: YOUR_REGISTRY/fund-estimate:latest  # 修改为你的镜像仓库地址
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SPRING_CONFIG_LOCATION
+          value: "file:/etc/config/application.properties"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /index.html
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /index.html
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: fund-estimate-config
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: fund-estimate-service
+  namespace: fund-estimate
+  labels:
+    app: fund-estimate
+spec:
+  type: LoadBalancer  # 使用负载均衡器暴露服务
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: fund-estimate
+
+---
+# HorizontalPodAutoscaler - 自动扩缩容
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fund-estimate-hpa
+  namespace: fund-estimate
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fund-estimate
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

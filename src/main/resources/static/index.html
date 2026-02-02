@@ -14,165 +14,215 @@
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #ebeef5; padding-bottom: 10px; }
         .up { color: #f56c6c; font-weight: bold; }
         .down { color: #67c23a; font-weight: bold; }
-        .card-header { display: flex; justify-content: space-between; align-items: center; }
-        .account-box { margin-bottom: 25px; border: 1px solid #ebeef5; border-radius: 4px; padding: 15px; }
+        .login-box { max-width: 400px; margin: 100px auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1); }
         .total-banner { background: #fdf6ec; padding: 15px; border-radius: 4px; margin-bottom: 20px; display: flex; gap: 40px; }
         .total-item { font-size: 14px; color: #606266; }
         .total-val { font-size: 20px; font-weight: bold; margin-top: 5px; color: #303133; }
+        .account-box { margin-bottom: 25px; border: 1px solid #ebeef5; border-radius: 4px; padding: 15px; }
     </style>
 </head>
 <body>
-    <div id="app" class="container">
-        <div class="header">
-            <h2>📊 基金实时监控系统</h2>
-            <el-tag type="info">实时同步天天基金数据</el-tag>
+    <div id="app">
+        <!-- 登录页面 -->
+        <div v-if="!isLoggedIn" class="login-box">
+            <h2 style="text-align: center; margin-bottom: 30px;">📊 基金监控系统</h2>
+            <el-tabs v-model="loginTab">
+                <el-tab-pane label="登录" name="login">
+                    <el-form :model="loginForm" label-width="80px">
+                        <el-form-item label="用户名">
+                            <el-input v-model="loginForm.username" placeholder="请输入用户名"></el-input>
+                        </el-form-item>
+                        <el-form-item label="密码">
+                            <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" @keyup.enter.native="handleLogin"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                            <el-button type="primary" @click="handleLogin" :loading="loading" style="width: 100%">登录</el-button>
+                        </el-form-item>
+                    </el-form>
+                </el-tab-pane>
+                <el-tab-pane label="注册" name="register">
+                    <el-form :model="registerForm" label-width="80px">
+                        <el-form-item label="用户名">
+                            <el-input v-model="registerForm.username" placeholder="请输入用户名"></el-input>
+                        </el-form-item>
+                        <el-form-item label="密码">
+                            <el-input v-model="registerForm.password" type="password" placeholder="请输入密码"></el-input>
+                        </el-form-item>
+                        <el-form-item label="昵称">
+                            <el-input v-model="registerForm.nickname" placeholder="请输入昵称"></el-input>
+                        </el-form-item>
+                        <el-form-item>
+                            <el-button type="success" @click="handleRegister" :loading="loading" style="width: 100%">注册</el-button>
+                        </el-form-item>
+                    </el-form>
+                </el-tab-pane>
+            </el-tabs>
         </div>
 
-        <el-tabs v-model="activeTab">
-            <!-- 标签页 1: 实时自选 -->
-            <el-tab-pane label="🔥 实时自选" name="watchlist">
-                <div style="margin: 20px 0; display: flex; justify-content: space-between;">
-                    <div>
-                        <el-input v-model="newFundCode" placeholder="输入6位基金代码" style="width: 180px;" @keyup.enter.native="addFund"></el-input>
-                        <el-button type="primary" icon="el-icon-plus" @click="addFund">添加自选</el-button>
-                    </div>
-                    <el-button type="success" icon="el-icon-refresh" @click="fetchAllData" :loading="loading">手动刷新</el-button>
+        <!-- 主页面 -->
+        <div v-else class="container">
+            <div class="header">
+                <h2>📊 基金实时监控系统</h2>
+                <div>
+                    <el-tag type="success" style="margin-right: 10px;">欢迎, {{ userInfo.nickname || userInfo.username }}</el-tag>
+                    <el-button size="small" @click="handleLogout">退出登录</el-button>
                 </div>
+            </div>
 
-                <el-table :data="fundList" style="width: 100%" v-loading="loading" border>
-                    <el-table-column prop="fundcode" label="代码" width="90"></el-table-column>
-                    <el-table-column prop="name" label="基金名称" min-width="150"></el-table-column>
-                    <el-table-column prop="dwjz" label="单位净值" width="100"></el-table-column>
-                    <el-table-column prop="gsz" label="实时估值" width="100"></el-table-column>
-                    <el-table-column label="估算涨幅" width="100">
-                        <template slot-scope="scope">
-                            <span :class="parseFloat(scope.row.gszzl) >= 0 ? 'up' : 'down'">
-                                {{ scope.row.gszzl }}%
-                            </span>
-                        </template>
-                    </el-table-column>
-                    <el-table-column prop="gstime" label="估值时间" width="150"></el-table-column>
-                    <el-table-column label="操作" width="80">
-                        <template slot-scope="scope">
-                            <el-button size="mini" type="text" style="color: #f56c6c" @click="removeFund(scope.$index)">删除</el-button>
-                        </template>
-                    </el-table-column>
-                </el-table>
-            </el-tab-pane>
-
-            <!-- 标签页 2: 我的资产 -->
-            <el-tab-pane label="💰 我的资产" name="portfolio">
-                <div class="total-banner" v-if="accounts.length > 0">
-                    <div class="total-item">总持仓本金<div class="total-val">{{ totalPrincipal.toFixed(2) }}</div></div>
-                    <div class="total-item">今日估算收益<div class="total-val" :class="totalDayGain >= 0 ? 'up' : 'down'">{{ totalDayGain >= 0 ? '+' : '' }}{{ totalDayGain.toFixed(2) }}</div></div>
-                    <div class="total-item">实时总持仓收益<div class="total-val" :class="totalProfit >= 0 ? 'up' : 'down'">{{ totalProfit >= 0 ? '+' : '' }}{{ totalProfit.toFixed(2) }}</div></div>
-                </div>
-
-                <div style="margin: 20px 0;">
-                    <el-button type="primary" icon="el-icon-folder-add" @click="showAddAccount">新增账户</el-button>
-                    <el-button type="success" icon="el-icon-refresh" @click="refreshPortfolio" :loading="loading">更新估值</el-button>
-                </div>
-
-                <div v-for="(acc, accIdx) in accounts" :key="accIdx" class="account-box">
-                    <div class="header">
-                        <h4 style="margin:0"><i class="el-icon-user"></i> {{ acc.accountName }}</h4>
+            <el-tabs v-model="activeTab">
+                <!-- 标签页 1: 实时自选 -->
+                <el-tab-pane label="🔥 实时自选" name="watchlist">
+                    <div style="margin: 20px 0; display: flex; justify-content: space-between;">
                         <div>
-                            <el-button size="mini" type="primary" plain @click="showAddHolding(accIdx)">添加持仓</el-button>
-                            <el-button size="mini" type="danger" plain @click="removeAccount(accIdx)">删除账户</el-button>
+                            <el-input v-model="newFundCode" placeholder="输入6位基金代码" style="width: 180px;" @keyup.enter.native="addFund"></el-input>
+                            <el-button type="primary" icon="el-icon-plus" @click="addFund">添加自选</el-button>
                         </div>
+                        <el-button type="success" icon="el-icon-refresh" @click="fetchWatchlist" :loading="loading">手动刷新</el-button>
                     </div>
 
-                    <el-table :data="acc.holdings" style="width: 100%; margin-top: 10px;" size="small">
-                        <el-table-column prop="fundcode" label="代码" width="80"></el-table-column>
-                        <el-table-column prop="name" label="基金名称" min-width="120"></el-table-column>
-                        <el-table-column prop="principal" label="持有金额(本金)" width="120"></el-table-column>
-                        <el-table-column prop="initialProfit" label="昨日累计收益" width="120"></el-table-column>
-                        <el-table-column label="估算涨幅" width="90">
+                    <el-table :data="fundList" style="width: 100%" v-loading="loading" border>
+                        <el-table-column prop="fundcode" label="代码" width="90"></el-table-column>
+                        <el-table-column prop="name" label="基金名称" min-width="150"></el-table-column>
+                        <el-table-column prop="dwjz" label="单位净值" width="100"></el-table-column>
+                        <el-table-column prop="gsz" label="实时估值" width="100"></el-table-column>
+                        <el-table-column label="估算涨幅" width="100">
                             <template slot-scope="scope">
-                                <span :class="scope.row.gszzl >= 0 ? 'up' : 'down'" v-if="scope.row.gszzl !== undefined">
+                                <span :class="parseFloat(scope.row.gszzl) >= 0 ? 'up' : 'down'">
                                     {{ scope.row.gszzl }}%
                                 </span>
-                                <span v-else>--</span>
                             </template>
                         </el-table-column>
-                        <el-table-column label="今日实时收益" width="110">
+                        <el-table-column prop="gstime" label="估值时间" width="150"></el-table-column>
+                        <el-table-column label="操作" width="80">
                             <template slot-scope="scope">
-                                <span :class="scope.row.realTimeGain >= 0 ? 'up' : 'down'" v-if="scope.row.realTimeGain !== undefined">
-                                    {{ scope.row.realTimeGain >= 0 ? '+' : '' }}{{ scope.row.realTimeGain.toFixed(2) }}
-                                </span>
-                                <span v-else>--</span>
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="实时总收益" width="110">
-                            <template slot-scope="scope">
-                                <span :class="scope.row.totalProfit >= 0 ? 'up' : 'down'" v-if="scope.row.totalProfit !== undefined">
-                                    {{ scope.row.totalProfit >= 0 ? '+' : '' }}{{ scope.row.totalProfit.toFixed(2) }}
-                                </span>
-                                <span v-else>--</span>
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="操作" width="60">
-                            <template slot-scope="scope">
-                                <el-button size="mini" type="text" style="color: #f56c6c" @click="removeHolding(accIdx, scope.$index)">删除</el-button>
+                                <el-button size="mini" type="text" style="color: #f56c6c" @click="removeFund(scope.row.fundcode)">删除</el-button>
                             </template>
                         </el-table-column>
                     </el-table>
+                </el-tab-pane>
+
+                <!-- 标签页 2: 我的资产 -->
+                <el-tab-pane label="💰 我的资产" name="portfolio">
+                    <div class="total-banner" v-if="accounts.length > 0">
+                        <div class="total-item">总持仓本金<div class="total-val">{{ totalPrincipal.toFixed(2) }}</div></div>
+                        <div class="total-item">今日估算收益<div class="total-val" :class="totalDayGain >= 0 ? 'up' : 'down'">{{ totalDayGain >= 0 ? '+' : '' }}{{ totalDayGain.toFixed(2) }}</div></div>
+                        <div class="total-item">实时总持仓收益<div class="total-val" :class="totalProfit >= 0 ? 'up' : 'down'">{{ totalProfit >= 0 ? '+' : '' }}{{ totalProfit.toFixed(2) }}</div></div>
+                    </div>
+
+                    <div style="margin: 20px 0;">
+                        <el-button type="primary" icon="el-icon-folder-add" @click="showAddAccount">新增账户</el-button>
+                        <el-button type="success" icon="el-icon-refresh" @click="fetchAccounts" :loading="loading">更新估值</el-button>
+                    </div>
+
+                    <div v-for="(acc, accIdx) in accounts" :key="acc.id" class="account-box">
+                        <div class="header">
+                            <h4 style="margin:0"><i class="el-icon-user"></i> {{ acc.accountName }}</h4>
+                            <div>
+                                <el-button size="mini" type="primary" plain @click="showAddHolding(acc.id)">添加持仓</el-button>
+                                <el-button size="mini" type="danger" plain @click="removeAccount(acc.id)">删除账户</el-button>
+                            </div>
+                        </div>
+
+                        <el-table :data="acc.holdings" style="width: 100%; margin-top: 10px;" size="small">
+                            <el-table-column prop="fundcode" label="代码" width="80"></el-table-column>
+                            <el-table-column prop="name" label="基金名称" min-width="120"></el-table-column>
+                            <el-table-column prop="principal" label="持有金额(本金)" width="120"></el-table-column>
+                            <el-table-column prop="initialProfit" label="昨日累计收益" width="120"></el-table-column>
+                            <el-table-column label="估算涨幅" width="90">
+                                <template slot-scope="scope">
+                                    <span :class="scope.row.gszzl >= 0 ? 'up' : 'down'" v-if="scope.row.gszzl !== undefined">
+                                        {{ scope.row.gszzl }}%
+                                    </span>
+                                    <span v-else>--</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="今日实时收益" width="110">
+                                <template slot-scope="scope">
+                                    <span :class="scope.row.realTimeGain >= 0 ? 'up' : 'down'" v-if="scope.row.realTimeGain !== undefined">
+                                        {{ scope.row.realTimeGain >= 0 ? '+' : '' }}{{ scope.row.realTimeGain.toFixed(2) }}
+                                    </span>
+                                    <span v-else>--</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="实时总收益" width="110">
+                                <template slot-scope="scope">
+                                    <span :class="scope.row.totalProfit >= 0 ? 'up' : 'down'" v-if="scope.row.totalProfit !== undefined">
+                                        {{ scope.row.totalProfit >= 0 ? '+' : '' }}{{ scope.row.totalProfit.toFixed(2) }}
+                                    </span>
+                                    <span v-else>--</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="操作" width="60">
+                                <template slot-scope="scope">
+                                    <el-button size="mini" type="text" style="color: #f56c6c" @click="removeHolding(scope.row.id)">删除</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </div>
+                    
+                    <el-empty v-if="accounts.length === 0" description="暂无账户，请点击新增账户"></el-empty>
+                </el-tab-pane>
+            </el-tabs>
+
+            <!-- 对话框：新增账户 -->
+            <el-dialog title="新增资产账户" :visible.sync="dialogAccVisible" width="400px">
+                <el-form :model="accForm">
+                    <el-form-item label="账户名称">
+                        <el-input v-model="accForm.name" placeholder="如：招行持仓、支付宝等"></el-input>
+                    </el-form-item>
+                </el-form>
+                <div slot="footer">
+                    <el-button @click="dialogAccVisible = false">取消</el-button>
+                    <el-button type="primary" @click="addAccount">确定</el-button>
                 </div>
-                
-                <el-empty v-if="accounts.length === 0" description="暂无账户，请点击新增账户"></el-empty>
-            </el-tab-pane>
-        </el-tabs>
+            </el-dialog>
 
-        <!-- 对话框：新增账户 -->
-        <el-dialog title="新增资产账户" :visible.sync="dialogAccVisible" width="400px">
-            <el-form :model="accForm">
-                <el-form-item label="账户名称">
-                    <el-input v-model="accForm.name" placeholder="如：招行持仓、支付宝等"></el-input>
-                </el-form-item>
-            </el-form>
-            <div slot="footer">
-                <el-button @click="dialogAccVisible = false">取消</el-button>
-                <el-button type="primary" @click="addAccount">确定</el-button>
-            </div>
-        </el-dialog>
-
-        <!-- 对话框：新增持仓 -->
-        <el-dialog title="新增持有基金" :visible.sync="dialogHoldVisible" width="450px">
-            <el-form :model="holdForm" label-width="120px">
-                <el-form-item label="基金代码">
-                    <el-input v-model="holdForm.fundcode" placeholder="6位代码"></el-input>
-                </el-form-item>
-                <el-form-item label="持有金额(本金)">
-                    <el-input-number v-model="holdForm.principal" :precision="2" :step="1000" style="width: 100%"></el-input-number>
-                </el-form-item>
-                <el-form-item label="累计收益(昨日)">
-                    <el-input-number v-model="holdForm.initialProfit" :precision="2" :step="100" style="width: 100%"></el-input-number>
-                </el-form-item>
-            </el-form>
-            <div slot="footer">
-                <el-button @click="dialogHoldVisible = false">取消</el-button>
-                <el-button type="primary" @click="addHolding">确定</el-button>
-            </div>
-        </el-dialog>
+            <!-- 对话框：新增持仓 -->
+            <el-dialog title="新增持有基金" :visible.sync="dialogHoldVisible" width="450px">
+                <el-form :model="holdForm" label-width="120px">
+                    <el-form-item label="基金代码">
+                        <el-input v-model="holdForm.fundCode" placeholder="6位代码"></el-input>
+                    </el-form-item>
+                    <el-form-item label="持有金额(本金)">
+                        <el-input-number v-model="holdForm.principal" :precision="2" :step="1000" style="width: 100%"></el-input-number>
+                    </el-form-item>
+                    <el-form-item label="累计收益(昨日)">
+                        <el-input-number v-model="holdForm.initialProfit" :precision="2" :step="100" style="width: 100%"></el-input-number>
+                    </el-form-item>
+                </el-form>
+                <div slot="footer">
+                    <el-button @click="dialogHoldVisible = false">取消</el-button>
+                    <el-button type="primary" @click="addHolding">确定</el-button>
+                </div>
+            </el-dialog>
+        </div>
     </div>
 
     <script>
+        const API_BASE = 'http://localhost:8080/api';
+        
         new Vue({
             el: '#app',
             data() {
                 return {
+                    // 登录相关
+                    isLoggedIn: false,
+                    loginTab: 'login',
+                    loginForm: { username: '', password: '' },
+                    registerForm: { username: '', password: '', nickname: '' },
+                    userInfo: {},
+                    
                     activeTab: 'watchlist',
                     // 自选相关
                     fundList: [],
                     newFundCode: '',
-                    myFundCodes: ['001186', '003096'],
                     // 资产相关
                     accounts: [],
                     dialogAccVisible: false,
                     dialogHoldVisible: false,
-                    currentAccIdx: -1,
+                    currentAccountId: null,
                     accForm: { name: '' },
-                    holdForm: { fundcode: '', principal: 0, initialProfit: 0 },
+                    holdForm: { fundCode: '', principal: 10000, initialProfit: 0 },
                     // 通用
                     loading: false,
                     timer: null
@@ -190,97 +240,137 @@
                 }
             },
             created() {
-                this.loadFromLocal();
-                this.fetchAllData();
-                this.refreshPortfolio();
-                this.timer = setInterval(() => {
-                    this.fetchAllData();
-                    this.refreshPortfolio();
-                }, 60000);
+                // 检查本地是否有登录信息
+                const savedUser = localStorage.getItem('fund_user');
+                if (savedUser) {
+                    this.userInfo = JSON.parse(savedUser);
+                    this.isLoggedIn = true;
+                    this.initData();
+                }
             },
             methods: {
-                loadFromLocal() {
-                    const savedCodes = localStorage.getItem('my_fund_codes');
-                    if (savedCodes) this.myFundCodes = JSON.parse(savedCodes);
-                    const savedAccs = localStorage.getItem('my_accounts');
-                    if (savedAccs) this.accounts = JSON.parse(savedAccs);
+                // 登录注册
+                handleLogin() {
+                    if (!this.loginForm.username || !this.loginForm.password) {
+                        return this.$message.warning('请输入用户名和密码');
+                    }
+                    this.loading = true;
+                    axios.post(`${API_BASE}/user/login`, this.loginForm)
+                        .then(res => {
+                            if (res.data.success) {
+                                this.userInfo = { userId: res.data.userId, username: res.data.username, nickname: res.data.nickname };
+                                localStorage.setItem('fund_user', JSON.stringify(this.userInfo));
+                                this.isLoggedIn = true;
+                                this.initData();
+                                this.$message.success('登录成功');
+                            } else {
+                                this.$message.error(res.data.message);
+                            }
+                            this.loading = false;
+                        })
+                        .catch(() => { this.loading = false; this.$message.error('登录失败'); });
                 },
-                saveToLocal() {
-                    localStorage.setItem('my_fund_codes', JSON.stringify(this.myFundCodes));
-                    localStorage.setItem('my_accounts', JSON.stringify(this.accounts));
+                handleRegister() {
+                    if (!this.registerForm.username || !this.registerForm.password) {
+                        return this.$message.warning('请输入用户名和密码');
+                    }
+                    this.loading = true;
+                    axios.post(`${API_BASE}/user/register`, this.registerForm)
+                        .then(res => {
+                            if (res.data.success) {
+                                this.$message.success('注册成功，请登录');
+                                this.loginTab = 'login';
+                                this.loginForm.username = this.registerForm.username;
+                            } else {
+                                this.$message.error(res.data.message);
+                            }
+                            this.loading = false;
+                        })
+                        .catch(() => { this.loading = false; this.$message.error('注册失败'); });
+                },
+                handleLogout() {
+                    localStorage.removeItem('fund_user');
+                    this.isLoggedIn = false;
+                    this.userInfo = {};
+                    if (this.timer) clearInterval(this.timer);
+                },
+                initData() {
+                    this.fetchWatchlist();
+                    this.fetchAccounts();
+                    this.timer = setInterval(() => {
+                        this.fetchWatchlist();
+                        this.fetchAccounts();
+                    }, 60000);
                 },
                 // 自选逻辑
-                fetchAllData() {
-                    if (this.myFundCodes.length === 0) return;
+                fetchWatchlist() {
                     this.loading = true;
-                    axios.get(`http://localhost:8080/api/fund/list?codes=${this.myFundCodes.join(',')}`)
+                    axios.get(`${API_BASE}/watchlist/list/${this.userInfo.userId}`)
                         .then(res => { this.fundList = res.data; this.loading = false; })
                         .catch(() => { this.loading = false; });
                 },
                 addFund() {
                     if (this.newFundCode.length !== 6) return this.$message.warning('请输入6位代码');
-                    if (!this.myFundCodes.includes(this.newFundCode)) {
-                        this.myFundCodes.push(this.newFundCode);
-                        this.saveToLocal();
-                        this.fetchAllData();
-                    }
-                    this.newFundCode = '';
+                    axios.post(`${API_BASE}/watchlist/add`, { userId: this.userInfo.userId, fundCode: this.newFundCode })
+                        .then(res => {
+                            if (res.data.success) {
+                                this.fetchWatchlist();
+                                this.newFundCode = '';
+                            } else {
+                                this.$message.warning(res.data.message);
+                            }
+                        });
                 },
-                removeFund(idx) {
-                    this.myFundCodes.splice(idx, 1);
-                    this.fundList.splice(idx, 1);
-                    this.saveToLocal();
+                removeFund(fundCode) {
+                    axios.delete(`${API_BASE}/watchlist/remove/${this.userInfo.userId}/${fundCode}`)
+                        .then(() => this.fetchWatchlist());
                 },
                 // 资产逻辑
+                fetchAccounts() {
+                    this.loading = true;
+                    axios.get(`${API_BASE}/account/list/${this.userInfo.userId}`)
+                        .then(res => { this.accounts = res.data; this.loading = false; })
+                        .catch(() => { this.loading = false; });
+                },
                 showAddAccount() { this.accForm.name = ''; this.dialogAccVisible = true; },
                 addAccount() {
                     if (!this.accForm.name) return;
-                    this.accounts.push({ accountName: this.accForm.name, holdings: [] });
-                    this.saveToLocal();
-                    this.dialogAccVisible = false;
+                    axios.post(`${API_BASE}/account/create`, { userId: this.userInfo.userId, accountName: this.accForm.name })
+                        .then(res => {
+                            if (res.data.success) {
+                                this.fetchAccounts();
+                                this.dialogAccVisible = false;
+                            }
+                        });
                 },
-                removeAccount(idx) {
+                removeAccount(accountId) {
                     this.$confirm('确定删除该账户及所有持仓吗?', '提示').then(() => {
-                        this.accounts.splice(idx, 1);
-                        this.saveToLocal();
+                        axios.delete(`${API_BASE}/account/delete/${accountId}`)
+                            .then(() => this.fetchAccounts());
                     });
                 },
-                showAddHolding(idx) {
-                    this.currentAccIdx = idx;
-                    this.holdForm = { fundcode: '', principal: 10000, initialProfit: 0 };
+                showAddHolding(accountId) {
+                    this.currentAccountId = accountId;
+                    this.holdForm = { fundCode: '', principal: 10000, initialProfit: 0 };
                     this.dialogHoldVisible = true;
                 },
                 addHolding() {
-                    if (this.holdForm.fundcode.length !== 6) return this.$message.warning('代码格式错误');
-                    const newHolding = JSON.parse(JSON.stringify(this.holdForm));
-                    this.accounts[this.currentAccIdx].holdings.push(newHolding);
-                    this.saveToLocal();
-                    this.refreshPortfolio();
-                    this.dialogHoldVisible = false;
-                },
-                removeHolding(accIdx, holdIdx) {
-                    this.accounts[accIdx].holdings.splice(holdIdx, 1);
-                    this.saveToLocal();
-                },
-                refreshPortfolio() {
-                    const allHoldings = [];
-                    this.accounts.forEach(acc => {
-                        acc.holdings.forEach(h => allHoldings.push(h));
+                    if (this.holdForm.fundCode.length !== 6) return this.$message.warning('代码格式错误');
+                    axios.post(`${API_BASE}/holding/create`, {
+                        accountId: this.currentAccountId,
+                        fundCode: this.holdForm.fundCode,
+                        principal: this.holdForm.principal,
+                        initialProfit: this.holdForm.initialProfit
+                    }).then(res => {
+                        if (res.data.success) {
+                            this.fetchAccounts();
+                            this.dialogHoldVisible = false;
+                        }
                     });
-                    if (allHoldings.length === 0) return;
-                    
-                    this.loading = true;
-                    axios.post('http://localhost:8080/api/fund/calculate-portfolio', allHoldings)
-                        .then(res => {
-                            let pointer = 0;
-                            this.accounts.forEach(acc => {
-                                acc.holdings.forEach((h, i) => {
-                                    Vue.set(acc.holdings, i, res.data[pointer++]);
-                                });
-                            });
-                            this.loading = false;
-                        })
-                        .catch(() => { this.loading = false; });
+                },
+                removeHolding(holdingId) {
+                    axios.delete(`${API_BASE}/holding/delete/${holdingId}`)
+                        .then(() => this.fetchAccounts());
                 }
             }
         });

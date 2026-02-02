@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时基金估值监控</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <style>
+        body { font-family: "Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","微软雅黑",Arial,sans-serif; background-color: #f5f7fa; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .up { color: #f56c6c; font-weight: bold; }
+        .down { color: #67c23a; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <div class="header">
+            <h2>📊 实时基金估值监控</h2>
+            <div>
+                <el-input v-model="newFundCode" placeholder="输入基金代码 (如: 001186)" style="width: 200px;" @keyup.enter.native="addFund"></el-input>
+                <el-button type="primary" @click="addFund">添加自选</el-button>
+                <el-button type="success" @click="fetchAllData" :loading="loading">手动刷新</el-button>
+            </div>
+        </div>
+
+        <el-table :data="fundList" style="width: 100%" v-loading="loading">
+            <el-table-column prop="fundcode" label="代码" width="100"></el-table-column>
+            <el-table-column prop="name" label="名称" min-width="180"></el-table-column>
+            <el-table-column prop="dwjz" label="单位净值" width="100"></el-table-column>
+            <el-table-column prop="jztime" label="净值日期" width="120"></el-table-column>
+            <el-table-column prop="gsz" label="当前估值" width="100"></el-table-column>
+            <el-table-column label="估算涨幅" width="100">
+                <template slot-scope="scope">
+                    <span :class="parseFloat(scope.row.gszzl) >= 0 ? 'up' : 'down'">
+                        {{ scope.row.gszzl }}%
+                    </span>
+                </template>
+            </el-table-column>
+            <el-table-column prop="gstime" label="估值时间" width="150"></el-table-column>
+            <el-table-column label="操作" width="100">
+                <template slot-scope="scope">
+                    <el-button size="mini" type="danger" @click="removeFund(scope.$index)">删除</el-button>
+                </template>
+            </el-table-column>
+        </el-table>
+        
+        <p style="margin-top: 20px; color: #909399; font-size: 14px;">
+            * 数据抓取自天天基金接口，仅供参考。自动刷新间隔：60秒。
+        </p>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    fundList: [],
+                    newFundCode: '',
+                    myFundCodes: ['001186', '003096', '161725'], // 默认一些热门基金
+                    loading: false,
+                    timer: null
+                }
+            },
+            created() {
+                const saved = localStorage.getItem('my_fund_codes');
+                if (saved) {
+                    this.myFundCodes = JSON.parse(saved);
+                }
+                this.fetchAllData();
+                this.timer = setInterval(this.fetchAllData, 60000);
+            },
+            beforeDestroy() {
+                if (this.timer) clearInterval(this.timer);
+            },
+            methods: {
+                fetchAllData() {
+                    if (this.myFundCodes.length === 0) return;
+                    this.loading = true;
+                    const codes = this.myFundCodes.join(',');
+                    axios.get(`http://localhost:8080/api/fund/list?codes=${codes}`)
+                        .then(response => {
+                            this.fundList = response.data;
+                            this.loading = false;
+                        })
+                        .catch(err => {
+                            this.$message.error('获取数据失败，请检查后端服务是否启动');
+                            this.loading = false;
+                        });
+                },
+                addFund() {
+                    if (!this.newFundCode || this.newFundCode.length !== 6) {
+                        this.$message.warning('请输入正确的6位基金代码');
+                        return;
+                    }
+                    if (this.myFundCodes.includes(this.newFundCode)) {
+                        this.$message.warning('该基金已在自选列表中');
+                        return;
+                    }
+                    this.myFundCodes.push(this.newFundCode);
+                    this.saveCodes();
+                    this.fetchAllData();
+                    this.newFundCode = '';
+                },
+                removeFund(index) {
+                    this.myFundCodes.splice(index, 1);
+                    this.fundList.splice(index, 1);
+                    this.saveCodes();
+                },
+                saveCodes() {
+                    localStorage.setItem('my_fund_codes', JSON.stringify(this.myFundCodes));
+                }
+            }
+        });
+    </script>
+</body>
+</html>

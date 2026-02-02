@@ -3,6 +3,7 @@ package com.example.fundestimate.service;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONUtil;
 import com.example.fundestimate.model.FundEstimateInfo;
+import com.example.fundestimate.model.HoldingDetail;
 import org.springframework.stereotype.Service;
 
 import java.util.regex.Matcher;
@@ -31,5 +32,20 @@ public class FundService {
             e.printStackTrace();
         }
         return null;
+    }
+
+    public HoldingDetail calculateHolding(HoldingDetail holding) {
+        FundEstimateInfo estimate = getFundEstimate(holding.getFundcode());
+        if (estimate != null) {
+            double gszzl = Double.parseDouble(estimate.getGszzl());
+            double realTimeGain = holding.getPrincipal() * (gszzl / 100.0);
+            
+            holding.setName(estimate.getName());
+            holding.setGszzl(gszzl);
+            holding.setGstime(estimate.getGstime());
+            holding.setRealTimeGain(realTimeGain);
+            holding.setTotalProfit(holding.getInitialProfit() + realTimeGain);
+        }
+        return holding;
     }
 }

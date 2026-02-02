@@ -1,6 +1,7 @@
 package com.example.fundestimate.controller;
 
 import com.example.fundestimate.model.FundEstimateInfo;
+import com.example.fundestimate.model.HoldingDetail;
 import com.example.fundestimate.service.FundService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -31,5 +32,13 @@ public class FundController {
             }
         }
         return results;
+    }
+
+    @PostMapping("/calculate-portfolio")
+    public List<HoldingDetail> calculatePortfolio(@RequestBody List<HoldingDetail> holdings) {
+        for (HoldingDetail holding : holdings) {
+            fundService.calculateHolding(holding);
+        }
+        return holdings;
     }
 }

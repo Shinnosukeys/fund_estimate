@@ -245,7 +245,13 @@
                         </div>
                     </div>
                     
-                    <h4 style="margin: 20px 0 10px;">📈 当日估值走势</h4>
+                    <div style="margin: 20px 0 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0;">📈 当日估值走势</h4>
+                        <el-radio-group v-model="chartMode" size="small" @change="renderChart">
+                            <el-radio-button label="value">估值走势</el-radio-button>
+                            <el-radio-button label="change">涨跌幅(%)</el-radio-button>
+                        </el-radio-group>
+                    </div>
                     <div id="trendChart"></div>
                 </div>
             </el-dialog>
@@ -282,6 +288,7 @@
                     detailLoading: false,
                     fundDetail: {},
                     trendChart: null,
+                    chartMode: 'value', // 'value' 估值走势, 'change' 涨跌幅
                     // 通用
                     loading: false,
                     timer: null
@@ -468,18 +475,33 @@
                         const changes = this.fundDetail.trendData.map(p => p.change);
                         
                         const isUp = parseFloat(this.fundDetail.gszzl) >= 0;
-                        const lineColor = isUp ? '#f56c6c' : '#67c23a';
-                        const areaColor = isUp ? 'rgba(245, 108, 108, 0.2)' : 'rgba(103, 194, 58, 0.2)';
+                        const mode = this.chartMode;
                         
+                        // 根据模式选择数据和配置
+                        const chartData = mode === 'value' ? values : changes;
+                        const seriesName = mode === 'value' ? '估值' : '涨跌幅(%)';
+                        
+                        // 涨跌幅模式下，根据每个点的正负决定颜色
+                        let lineColor, areaColor;
+                        if (mode === 'value') {
+                            lineColor = isUp ? '#f56c6c' : '#67c23a';
+                            areaColor = isUp ? 'rgba(245, 108, 108, 0.2)' : 'rgba(103, 194, 58, 0.2)';
+                        } else {
+                            lineColor = isUp ? '#f56c6c' : '#67c23a';
+                            areaColor = isUp ? 'rgba(245, 108, 108, 0.2)' : 'rgba(103, 194, 58, 0.2)';
+                        }
+                        
+                        const that = this;
                         const option = {
                             tooltip: {
                                 trigger: 'axis',
                                 formatter: function(params) {
                                     const idx = params[0].dataIndex;
+                                    const value = values[idx];
                                     const change = changes[idx];
                                     const changeStr = change >= 0 ? '+' + change.toFixed(2) : change.toFixed(2);
                                     return `<b>${params[0].axisValue}</b><br/>
-                                            估值: ${params[0].value.toFixed(4)}<br/>
+                                            估值: ${value.toFixed(4)}<br/>
                                             涨跌: <span style="color:${change >= 0 ? '#f56c6c' : '#67c23a'}">${changeStr}%</span>`;
                                 }
                             },
@@ -502,23 +524,45 @@
                                 scale: true,
                                 axisLabel: {
                                     formatter: function(val) {
-                                        return val.toFixed(4);
+                                        if (mode === 'value') {
+                                            return val.toFixed(4);
+                                        } else {
+                                            return val.toFixed(2) + '%';
+                                        }
                                     }
                                 }
                             },
+                            visualMap: mode === 'change' ? {
+                                show: false,
+                                pieces: [
+                                    { lte: 0, color: '#67c23a' },
+                                    { gt: 0, color: '#f56c6c' }
+                                ]
+                            } : null,
                             series: [{
-                                name: '估值',
+                                name: seriesName,
                                 type: 'line',
                                 smooth: true,
                                 symbol: 'none',
                                 lineStyle: {
-                                    color: lineColor,
+                                    color: mode === 'value' ? lineColor : undefined,
                                     width: 2
                                 },
-                                areaStyle: {
+                                areaStyle: mode === 'value' ? {
                                     color: areaColor
+                                } : {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: isUp ? 'rgba(245, 108, 108, 0.3)' : 'rgba(103, 194, 58, 0.3)' },
+                                        { offset: 1, color: 'rgba(255, 255, 255, 0.1)' }
+                                    ])
                                 },
-                                data: values
+                                markLine: mode === 'change' ? {
+                                    silent: true,
+                                    symbol: 'none',
+                                    lineStyle: { color: '#909399', type: 'dashed' },
+                                    data: [{ yAxis: 0 }]
+                                } : null,
+                                data: chartData
                             }]
                         };
                         

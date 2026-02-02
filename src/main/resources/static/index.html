@@ -214,10 +214,9 @@
             </el-dialog>
 
             <!-- 对话框：基金详情 -->
-            <el-dialog :title="fundDetail.name ? fundDetail.name + ' (' + fundDetail.fundcode + ')' : '基金详情'" 
-                       :visible.sync="dialogDetailVisible" 
-                       width="800px"
-                       @opened="renderChart">
+            <el-dialog :title="fundDetail.name ? fundDetail.name + ' (' + fundDetail.fundcode + ')' : '基金详情'"
+                       :visible.sync="dialogDetailVisible"
+                       width="800px">
                 <div v-loading="detailLoading">
                     <div class="detail-info">
                         <div class="detail-info-item">
@@ -442,6 +441,10 @@
                         .then(res => {
                             this.fundDetail = res.data;
                             this.detailLoading = false;
+                            // 数据加载完成后，延迟渲染图表确保 DOM 已更新
+                            setTimeout(() => {
+                                this.renderChart();
+                            }, 100);
                         })
                         .catch(() => {
                             this.detailLoading = false;

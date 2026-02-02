@@ -6,6 +6,7 @@
     <title>实时基金监控与资产管理</title>
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
     <script src="https://unpkg.com/element-ui/lib/index.js"></script>
     <style>
@@ -19,6 +20,14 @@
         .total-item { font-size: 14px; color: #606266; }
         .total-val { font-size: 20px; font-weight: bold; margin-top: 5px; color: #303133; }
         .account-box { margin-bottom: 25px; border: 1px solid #ebeef5; border-radius: 4px; padding: 15px; }
+        .fund-name-link { color: #409EFF; cursor: pointer; text-decoration: none; }
+        .fund-name-link:hover { text-decoration: underline; }
+        .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .detail-info { display: flex; gap: 30px; flex-wrap: wrap; margin-bottom: 20px; padding: 15px; background: #f5f7fa; border-radius: 4px; }
+        .detail-info-item { text-align: center; }
+        .detail-info-label { font-size: 12px; color: #909399; }
+        .detail-info-value { font-size: 18px; font-weight: bold; margin-top: 5px; }
+        #trendChart { width: 100%; height: 350px; }
     </style>
 </head>
 <body>
@@ -82,7 +91,11 @@
 
                     <el-table :data="fundList" style="width: 100%" v-loading="loading" border>
                         <el-table-column prop="fundcode" label="代码" width="90"></el-table-column>
-                        <el-table-column prop="name" label="基金名称" min-width="150"></el-table-column>
+                        <el-table-column label="基金名称" min-width="150">
+                            <template slot-scope="scope">
+                                <a class="fund-name-link" @click="showFundDetail(scope.row.fundcode)">{{ scope.row.name }}</a>
+                            </template>
+                        </el-table-column>
                         <el-table-column prop="dwjz" label="单位净值" width="100"></el-table-column>
                         <el-table-column prop="gsz" label="实时估值" width="100"></el-table-column>
                         <el-table-column label="估算涨幅" width="100">
@@ -125,7 +138,11 @@
 
                         <el-table :data="acc.holdings" style="width: 100%; margin-top: 10px;" size="small">
                             <el-table-column prop="fundcode" label="代码" width="80"></el-table-column>
-                            <el-table-column prop="name" label="基金名称" min-width="120"></el-table-column>
+                            <el-table-column label="基金名称" min-width="120">
+                                <template slot-scope="scope">
+                                    <a class="fund-name-link" @click="showFundDetail(scope.row.fundcode)">{{ scope.row.name }}</a>
+                                </template>
+                            </el-table-column>
                             <el-table-column prop="principal" label="持有金额(本金)" width="120"></el-table-column>
                             <el-table-column prop="initialProfit" label="昨日累计收益" width="120"></el-table-column>
                             <el-table-column label="估算涨幅" width="90">
@@ -195,6 +212,44 @@
                     <el-button type="primary" @click="addHolding">确定</el-button>
                 </div>
             </el-dialog>
+
+            <!-- 对话框：基金详情 -->
+            <el-dialog :title="fundDetail.name ? fundDetail.name + ' (' + fundDetail.fundcode + ')' : '基金详情'" 
+                       :visible.sync="dialogDetailVisible" 
+                       width="800px"
+                       @opened="renderChart">
+                <div v-loading="detailLoading">
+                    <div class="detail-info">
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">基金代码</div>
+                            <div class="detail-info-value">{{ fundDetail.fundcode }}</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">单位净值</div>
+                            <div class="detail-info-value">{{ fundDetail.dwjz }}</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">净值日期</div>
+                            <div class="detail-info-value">{{ fundDetail.jztime }}</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">实时估值</div>
+                            <div class="detail-info-value" :class="parseFloat(fundDetail.gszzl) >= 0 ? 'up' : 'down'">{{ fundDetail.gsz }}</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">估算涨幅</div>
+                            <div class="detail-info-value" :class="parseFloat(fundDetail.gszzl) >= 0 ? 'up' : 'down'">{{ fundDetail.gszzl }}%</div>
+                        </div>
+                        <div class="detail-info-item">
+                            <div class="detail-info-label">估值时间</div>
+                            <div class="detail-info-value">{{ fundDetail.gstime }}</div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="margin: 20px 0 10px;">📈 当日估值走势</h4>
+                    <div id="trendChart"></div>
+                </div>
+            </el-dialog>
         </div>
     </div>
 
@@ -223,6 +278,11 @@
                     currentAccountId: null,
                     accForm: { name: '' },
                     holdForm: { fundCode: '', principal: 10000, initialProfit: 0 },
+                    // 基金详情
+                    dialogDetailVisible: false,
+                    detailLoading: false,
+                    fundDetail: {},
+                    trendChart: null,
                     // 通用
                     loading: false,
                     timer: null
@@ -371,6 +431,96 @@
                 removeHolding(holdingId) {
                     axios.delete(`${API_BASE}/holding/delete/${holdingId}`)
                         .then(() => this.fetchAccounts());
+                },
+                // 基金详情
+                showFundDetail(fundCode) {
+                    this.fundDetail = {};
+                    this.dialogDetailVisible = true;
+                    this.detailLoading = true;
+                    
+                    axios.get(`${API_BASE}/fund/detail/${fundCode}`)
+                        .then(res => {
+                            this.fundDetail = res.data;
+                            this.detailLoading = false;
+                        })
+                        .catch(() => {
+                            this.detailLoading = false;
+                            this.$message.error('获取基金详情失败');
+                        });
+                },
+                renderChart() {
+                    this.$nextTick(() => {
+                        if (!this.fundDetail.trendData || this.fundDetail.trendData.length === 0) return;
+                        
+                        const chartDom = document.getElementById('trendChart');
+                        if (!chartDom) return;
+                        
+                        if (this.trendChart) {
+                            this.trendChart.dispose();
+                        }
+                        this.trendChart = echarts.init(chartDom);
+                        
+                        const times = this.fundDetail.trendData.map(p => p.time);
+                        const values = this.fundDetail.trendData.map(p => p.value);
+                        const changes = this.fundDetail.trendData.map(p => p.change);
+                        
+                        const isUp = parseFloat(this.fundDetail.gszzl) >= 0;
+                        const lineColor = isUp ? '#f56c6c' : '#67c23a';
+                        const areaColor = isUp ? 'rgba(245, 108, 108, 0.2)' : 'rgba(103, 194, 58, 0.2)';
+                        
+                        const option = {
+                            tooltip: {
+                                trigger: 'axis',
+                                formatter: function(params) {
+                                    const idx = params[0].dataIndex;
+                                    const change = changes[idx];
+                                    const changeStr = change >= 0 ? '+' + change.toFixed(2) : change.toFixed(2);
+                                    return `<b>${params[0].axisValue}</b><br/>
+                                            估值: ${params[0].value.toFixed(4)}<br/>
+                                            涨跌: <span style="color:${change >= 0 ? '#f56c6c' : '#67c23a'}">${changeStr}%</span>`;
+                                }
+                            },
+                            grid: {
+                                left: '3%',
+                                right: '4%',
+                                bottom: '3%',
+                                containLabel: true
+                            },
+                            xAxis: {
+                                type: 'category',
+                                boundaryGap: false,
+                                data: times,
+                                axisLabel: {
+                                    interval: Math.floor(times.length / 6)
+                                }
+                            },
+                            yAxis: {
+                                type: 'value',
+                                scale: true,
+                                axisLabel: {
+                                    formatter: function(val) {
+                                        return val.toFixed(4);
+                                    }
+                                }
+                            },
+                            series: [{
+                                name: '估值',
+                                type: 'line',
+                                smooth: true,
+                                symbol: 'none',
+                                lineStyle: {
+                                    color: lineColor,
+                                    width: 2
+                                },
+                                areaStyle: {
+                                    color: areaColor
+                                },
+                                data: values
+                            }]
+                        };
+                        
+                        this.trendChart.setOption(option);
+                    });
                 }
             }
         });

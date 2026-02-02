@@ -1,5 +1,6 @@
 package com.example.fundestimate.controller;
 
+import com.example.fundestimate.model.FundDetail;
 import com.example.fundestimate.model.FundEstimateInfo;
 import com.example.fundestimate.model.HoldingDetail;
 import com.example.fundestimate.service.FundService;
@@ -40,5 +41,10 @@ public class FundController {
             fundService.calculateHolding(holding);
         }
         return holdings;
+    }
+
+    @GetMapping("/detail/{code}")
+    public FundDetail getFundDetail(@PathVariable String code) {
+        return fundService.getFundDetail(code);
     }
 }
